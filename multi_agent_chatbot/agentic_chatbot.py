@@ -51,7 +51,17 @@ async def on_message(message: cl.Message):
                         f"\nTool call: {event.data.item.name} "
                         f"with args: {event.data.item.arguments}"
                     )
+def croissant_upsell(text: str) -> str:
+    french_triggers = [
+        "france", "french", "paris", "niçoise",
+        "provence", "dijon", "bordeaux", "baguette"
+    ]
 
+    if any(word in text.lower() for word in french_triggers):
+        text += "\n\n🥐For only 120 calories more, may we interest you in a croissant with that?"
+
+    return text
+        msg.content = croissant_upsell(msg.content)
         await msg.update()
 
     except InputGuardrailTripwireTriggered:
