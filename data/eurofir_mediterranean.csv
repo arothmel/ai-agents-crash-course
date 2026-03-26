@@ -1,0 +1,51 @@
+FoodID,FoodName,FoodGroup,Source,ENERC_kcal,PROCNT_g,FAT_g,CHOCDF_g,FIB_g,Notes
+MED001,Extra virgin olive oil,Mediterranean base,EuroFIR ref,884,0,100,0,0,Cold-pressed olive oil
+MED002,Tomatoes,Mediterranean base,EuroFIR ref,18,0.9,0.2,3.9,1.2,Raw ripe tomatoes
+MED003,Sun-dried tomatoes,Mediterranean base,EuroFIR ref,258,14,3,55,12,Oil-free sun-dried halves
+MED004,Garlic cloves,Mediterranean base,EuroFIR ref,149,6.4,0.5,33.1,2.1,Raw garlic cloves
+MED005,Yellow onions,Mediterranean base,EuroFIR ref,40,1.1,0.1,9.3,1.7,Standard globe onions
+MED006,Chickpeas cooked,Mediterranean base,EuroFIR ref,164,8.9,2.6,27.4,7.6,Cooked canned chickpeas rinsed
+MED007,Lentils cooked,Mediterranean base,EuroFIR ref,116,9,0.4,20.1,7.9,Brown lentils simmered
+MED008,Cannellini beans cooked,Mediterranean base,EuroFIR ref,82,5.8,0.5,14,3.7,Rinsed canned beans
+MED009,Kidney beans cooked,Mediterranean base,EuroFIR ref,127,8.7,0.5,22.8,6.4,Rinsed canned kidney beans
+MED010,Eggplant,Mediterranean base,EuroFIR ref,25,1,0.2,5.9,3,Raw globe eggplant
+MED011,Zucchini,Mediterranean base,EuroFIR ref,17,1.2,0.3,3.1,1,Raw courgette
+MED012,Bell peppers (red),Mediterranean base,EuroFIR ref,31,1,0.3,6,2.1,Raw sweet red peppers
+MED013,Spinach,Mediterranean base,EuroFIR ref,23,2.9,0.4,3.6,2.2,Raw baby spinach
+MED014,Arugula,Mediterranean base,EuroFIR ref,25,2.6,0.7,3.7,1.6,Raw rocket leaves
+MED015,Kale,Mediterranean base,EuroFIR ref,35,2.9,1.5,4.4,4.1,Raw curly kale
+MED016,Artichoke hearts,Mediterranean base,EuroFIR ref,47,3.3,0.2,10.5,5.4,Canned in brine drained
+MED017,Capers,Mediterranean base,EuroFIR ref,23,2.4,0.9,4.9,3.2,Brined capers rinsed
+MED018,Kalamata olives,Mediterranean base,EuroFIR ref,239,1.8,24.9,6.3,3.3,Pitted olives drained
+MED019,Parsley fresh,Extras,EuroFIR ref,36,3,0.8,6.3,3.3,Flat-leaf parsley
+MED020,Basil fresh,Extras,EuroFIR ref,23,3.2,0.6,2.7,1.6,Fresh basil leaves
+MED021,Oregano dried,Extras,EuroFIR ref,265,9,4.3,68.9,42.5,Dried oregano flakes
+MED022,Rosemary fresh,Extras,EuroFIR ref,131,3.3,5.9,20.7,14.1,Fresh rosemary needles
+MED023,Thyme fresh,Extras,EuroFIR ref,101,5.6,1.7,24.5,14,Fresh thyme sprigs
+MED024,Dill fresh,Extras,EuroFIR ref,43,3.5,1.1,7,2.1,Fresh dill weed
+MED025,Eggs whole large,Protein sources,EuroFIR ref,143,12.6,9.5,0.7,0,Chicken eggs Grade A
+MED026,Chicken breast (raw),Protein sources,EuroFIR ref,165,31,3.6,0,0,Skinless boneless breast
+MED027,Atlantic salmon (raw),Protein sources,EuroFIR ref,208,20,13,0,0,Fillet Atlantic salmon
+MED028,Sardines packed in water,Protein sources,EuroFIR ref,208,25,11.5,0,0,Boneless fillets drained
+MED029,Cod fillet (raw),Protein sources,EuroFIR ref,82,18,0.7,0,0,Atlantic cod
+MED030,Shrimp (raw),Protein sources,EuroFIR ref,99,24,0.3,0.2,0,Medium peeled shrimp
+MED031,Greek yogurt 2%,Protein sources,EuroFIR ref,59,10,0.4,3.6,0,Plain strained yogurt
+MED032,Feta cheese,Protein sources,EuroFIR ref,264,14.2,21.3,4.1,0,Brined feta cheese
+MED033,Halloumi cheese,Protein sources,EuroFIR ref,321,23,25,2.2,0,Grilling halloumi
+MED034,Mozzarella part-skim,Protein sources,EuroFIR ref,254,28,17,3.1,0,Low-moisture mozzarella
+MED035,Brown rice cooked,Carbs,EuroFIR ref,123,2.7,1,25.6,1.8,Cooked medium-grain
+MED036,Couscous cooked,Carbs,EuroFIR ref,112,3.8,0.2,23.2,1.4,Steamed durum couscous
+MED037,Bulgur cooked,Carbs,EuroFIR ref,83,3.1,0.2,18.6,4.5,Medium grind bulgur
+MED038,Whole-wheat pasta cooked,Carbs,EuroFIR ref,124,5,0.9,26.8,4.5,Al dente penne
+MED039,Sourdough bread,Carbs,EuroFIR ref,230,8.5,2.4,43,3,Artisan loaf sliced
+MED040,Whole-wheat pita,Carbs,EuroFIR ref,275,9.1,1.2,55.7,6.4,6-inch pita
+MED041,Potatoes,Mediterranean base,EuroFIR ref,77,2,0.1,17.5,2.2,Boiled white potatoes
+MED042,Sweet potatoes,Mediterranean base,EuroFIR ref,86,1.6,0.1,20.1,3,Cubed baked
+MED043,Quinoa cooked,Carbs,EuroFIR ref,120,4.4,1.9,21.3,2.8,Tri-color blend cooked
+MED044,Orzo cooked,Carbs,EuroFIR ref,125,4.7,1.1,25.3,1.8,Semolina orzo boiled
+MED045,Lemons,Extras,EuroFIR ref,29,1.1,0.3,9.3,2.8,Whole fruit without peel
+MED046,Oranges,Extras,EuroFIR ref,47,0.9,0.1,11.8,2.4,Navel orange segments
+MED047,Almonds,Extras,EuroFIR ref,579,21.2,49.9,21.6,12.5,Raw almonds
+MED048,Walnuts,Extras,EuroFIR ref,654,15,65,14,6.7,Raw walnut halves
+MED049,Pine nuts,Extras,EuroFIR ref,673,13.7,68.4,13.1,3.7,Raw mediterranean pine nuts
+MED050,Pistachios,Extras,EuroFIR ref,560,20.2,45.3,28.3,10.6,Dry roasted pistachios

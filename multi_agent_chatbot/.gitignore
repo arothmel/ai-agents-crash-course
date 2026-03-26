@@ -1,0 +1,16 @@
+# Chroma vector DB
+chroma/
+../chroma/
+chroma_mediterranean/
+../chroma_mediterranean/
+
+# Recipes export (local data)
+../recipes/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+../rag_setup/.ipynb_checkpoints/
+../solutions/.ipynb_checkpoints/
+
+# Virtual env
+venv/

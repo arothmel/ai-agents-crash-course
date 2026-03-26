@@ -1,0 +1,51 @@
+FoodCategory,FoodItem,per100grams,Cals_per100grams,KJ_per100grams
+Mediterranean base,Extra virgin olive oil,100g,884 cal,3698.7 kJ
+Mediterranean base,Tomatoes,100g,18 cal,75.3 kJ
+Mediterranean base,Sun-dried tomatoes,100g,258 cal,1079.5 kJ
+Mediterranean base,Garlic cloves,100g,149 cal,623.4 kJ
+Mediterranean base,Yellow onions,100g,40 cal,167.4 kJ
+Mediterranean base,Chickpeas cooked,100g,164 cal,686.2 kJ
+Mediterranean base,Lentils cooked,100g,116 cal,485.3 kJ
+Mediterranean base,Cannellini beans cooked,100g,82 cal,343.1 kJ
+Mediterranean base,Kidney beans cooked,100g,127 cal,531.4 kJ
+Mediterranean base,Eggplant,100g,25 cal,104.6 kJ
+Mediterranean base,Zucchini,100g,17 cal,71.1 kJ
+Mediterranean base,Bell peppers (red),100g,31 cal,129.7 kJ
+Mediterranean base,Spinach,100g,23 cal,96.2 kJ
+Mediterranean base,Arugula,100g,25 cal,104.6 kJ
+Mediterranean base,Kale,100g,35 cal,146.4 kJ
+Mediterranean base,Artichoke hearts,100g,47 cal,196.6 kJ
+Mediterranean base,Capers,100g,23 cal,96.2 kJ
+Mediterranean base,Kalamata olives,100g,239 cal,1000 kJ
+Extras,Parsley fresh,100g,36 cal,150.6 kJ
+Extras,Basil fresh,100g,23 cal,96.2 kJ
+Extras,Oregano dried,100g,265 cal,1108.8 kJ
+Extras,Rosemary fresh,100g,131 cal,548.1 kJ
+Extras,Thyme fresh,100g,101 cal,422.6 kJ
+Extras,Dill fresh,100g,43 cal,179.9 kJ
+Protein,Eggs whole large,100g,143 cal,598.3 kJ
+Protein,Chicken breast (raw),100g,165 cal,690.4 kJ
+Protein,Atlantic salmon (raw),100g,208 cal,870.3 kJ
+Protein,Sardines packed in water,100g,208 cal,870.3 kJ
+Protein,Cod fillet (raw),100g,82 cal,343.1 kJ
+Protein,Shrimp (raw),100g,99 cal,414.2 kJ
+Protein,Greek yogurt 2%,100g,59 cal,246.9 kJ
+Protein,Feta cheese,100g,264 cal,1104.6 kJ
+Protein,Halloumi cheese,100g,321 cal,1343.1 kJ
+Protein,Mozzarella part-skim,100g,254 cal,1062.7 kJ
+Carbohydrates,Brown rice cooked,100g,123 cal,514.6 kJ
+Carbohydrates,Couscous cooked,100g,112 cal,468.6 kJ
+Carbohydrates,Bulgur cooked,100g,83 cal,347.3 kJ
+Carbohydrates,Whole-wheat pasta cooked,100g,124 cal,518.8 kJ
+Carbohydrates,Sourdough bread,100g,230 cal,962.3 kJ
+Carbohydrates,Whole-wheat pita,100g,275 cal,1150.6 kJ
+Mediterranean base,Potatoes,100g,77 cal,322.2 kJ
+Mediterranean base,Sweet potatoes,100g,86 cal,359.8 kJ
+Carbohydrates,Quinoa cooked,100g,120 cal,502.1 kJ
+Carbohydrates,Orzo cooked,100g,125 cal,523 kJ
+Extras,Lemons,100g,29 cal,121.3 kJ
+Extras,Oranges,100g,47 cal,196.6 kJ
+Extras,Almonds,100g,579 cal,2422.5 kJ
+Extras,Walnuts,100g,654 cal,2736.3 kJ
+Extras,Pine nuts,100g,673 cal,2815.8 kJ
+Extras,Pistachios,100g,560 cal,2343 kJ

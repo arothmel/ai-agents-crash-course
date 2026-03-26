@@ -71,3 +71,9 @@ A complete **AI-powered nutrition assistant** featuring:
 
 **Frank Kane** - Ex-Amazon/IMDb, 17 patents in ML, 1M+ students  
 **Zoltan C. Toth** - 20+ years AI infrastructure, Ex-Databricks instructor
+
+## 🧠 Mediterranean Nutrition Data
+
+- `data/eurofir_mediterranean.csv` is the new source-of-truth EuroFIR table we curate for Mediterranean-friendly ingredients. Update this file when you add or adjust foods.
+- `data/calories_mediterranean.csv` is a compatibility export for older loaders/tooling. Regenerate it after any EuroFIR edits via `python rag_setup/convert_eurofir_to_calories.py`.
+- Nutrition-focused notebooks and agents now store their vectors in `./chroma_mediterranean/`. Recipe ingestion continues to use `./chroma/`, so keep running the recipe loader exactly as before.

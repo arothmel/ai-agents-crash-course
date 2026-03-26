@@ -18,3 +18,8 @@ This directory contains datasets used for nutrition-related AI applications.
 - **License**: CC0 Public Domain
 - **Description**: Comprehensive dataset containing calorie information for various food items per 100 grams, including food categories, calories, and kilojoules
 
+### Mediterranean EuroFIR Dataset
+- **Maintained file**: `eurofir_mediterranean.csv` – curated EuroFIR-style records for ~50 Mediterranean ingredients (kcal/macros per 100 g + sourcing notes). Edit this file when you add or tweak foods.
+- **Derived file**: `calories_mediterranean.csv` – compatibility export that mirrors the legacy `calories.csv` schema so older loaders keep working.
+- **Regeneration command**: `python rag_setup/convert_eurofir_to_calories.py`
+- **Vector store**: after regenerating the compatibility CSV, ingest the EuroFIR source into `./chroma_mediterranean/` with `python rag_setup/enrich_nutrition_db.py --chroma-path ./chroma_mediterranean`

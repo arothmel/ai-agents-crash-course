@@ -1,7 +1,8 @@
+import json
 import os
+import sys
 from pathlib import Path
 
-import chromadb
 from agents import (
     Agent,
     GuardrailFunctionOutput,
@@ -14,45 +15,31 @@ from agents import (
 from agents.mcp import MCPServerStreamableHttp
 from pydantic import BaseModel
 
-# This is the same code as in the rag.ipynb notebook
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
+from nutrition_lookup import NutritionLookup
 
-chroma_path = Path(__file__).parent.parent / "chroma"
-chroma_client = chromadb.PersistentClient(path=str(chroma_path))
-nutrition_db = chroma_client.get_collection(name="nutrition_db")
+nutrition_lookup = NutritionLookup()
 
 
 @function_tool
-def calorie_lookup_tool(query: str, max_results: int = 3) -> str:
+def nutrition_lookup_tool(query: str) -> str:
     """
-    Tool function for a RAG database to look up calorie information for specific food items, but not for meals.
+    Tool function for looking up nutrition facts for single ingredients.
 
     Args:
         query: The food item to look up.
-        max_results: The maximum number of results to return.
 
     Returns:
-        A string containing the nutrition information.
+        JSON-formatted nutrition information.
     """
-
-    results = nutrition_db.query(query_texts=[query], n_results=max_results)
-
-    if not results["documents"][0]:
+    result = nutrition_lookup.lookup(query)
+    if not result:
         return f"No nutrition information found for: {query}"
 
-    # Format results for the agent
-    formatted_results = []
-    for i, doc in enumerate(results["documents"][0]):
-        metadata = results["metadatas"][0][i]
-        food_item = metadata["food_item"].title()
-        calories = metadata["calories_per_100g"]
-        category = metadata["food_category"].title()
-
-        formatted_results.append(
-            f"{food_item} ({category}): {calories} calories per 100g"
-        )
-
-    return "Nutrition Information:\n" + "\n".join(formatted_results)
+    return json.dumps(result.to_dict(), indent=2)
 
 
 # EXA Search MCP setup
@@ -75,17 +62,17 @@ calorie_agent_with_search = Agent(
     * You are a helpful nutrition assistant giving out calorie information.
     * You give concise answers.
     * You follow this workflow:
-        0) First, use the calorie_lookup_tool to get the calorie information of the ingredients. But only use the result if it's explicitly for the food requested in the query.
+        0) First, use the nutrition_lookup_tool to get the nutrition information (kcal, protein, carbs, fat, fiber) of the ingredients. Only use the result if it's explicitly for the food requested in the query.
         1) If you couldn't find the exact match for the food or you need to look up the ingredients, search the EXA web to figure out the exact ingredients of the meal.
-        Even if you have the calories in the web search response, you should still use the calorie_lookup_tool to get the calorie
+        Even if you have the calories in the web search response, you should still use the nutrition_lookup_tool to get the nutrition
         information of the ingredients to make sure the information you provide is consistent.
-        2) Then, if necessary, use the calorie_lookup_tool to get the calorie information of the ingredients.
+        2) Then, if necessary, use the nutrition_lookup_tool to get the nutrition information of the ingredients.
     * Even if you know the recipe of the meal, always use Exa Search to find the exact recipe and ingredients.
-    * Once you know the ingredients, use the calorie_lookup_tool to get the calorie information of the individual ingredients.
+    * Once you know the ingredients, use the nutrition_lookup_tool to get the nutrition information of the individual ingredients.
     * If the query is about the meal, in your final output give a list of ingredients with their quantities and calories for a single serving. Also display the total calories.
-    * Don't use the calorie_lookup_tool more than 10 times.
+    * Don't use the nutrition_lookup_tool more than 10 times.
     """,
-    tools=[calorie_lookup_tool],
+    tools=[nutrition_lookup_tool],
     mcp_servers=[exa_search_mcp],
 )
 
@@ -177,18 +164,18 @@ calorie_agent_with_search_guarded = Agent(
     * You are a helpful nutrition assistant giving out calorie information.
     * You give concise answers.
     * You follow this workflow:
-        0) First, use the calorie_lookup_tool to get the calorie information of the ingredients. But only use the result if it's explicitly for the food requested in the query.
+        0) First, use the nutrition_lookup_tool to get the nutrition information of the ingredients. But only use the result if it's explicitly for the food requested in the query.
         1) If you couldn't find the exact match for the food or you need to look up the ingredients, search the EXA web to figure out the exact ingredients of the meal.
-        Even if you have the calories in the web search response, you should still use the calorie_lookup_tool to get the calorie
+        Even if you have the calories in the web search response, you should still use the nutrition_lookup_tool to get the nutrition
         information of the ingredients to make sure the information you provide is consistent.
-        2) Then, if necessary, use the calorie_lookup_tool to get the calorie information of the ingredients.
+        2) Then, if necessary, use the nutrition_lookup_tool to get the nutrition information of the ingredients.
     * Even if you know the recipe of the meal, always use Exa Search to find the exact recipe and ingredients.
-    * Once you know the ingredients, use the calorie_lookup_tool to get the calorie information of the individual ingredients.
+    * Once you know the ingredients, use the nutrition_lookup_tool to get the nutrition information of the individual ingredients.
     * If the query is about the meal, in your final output give a list of ingredients with their quantities and calories for a single serving. Also display the total calories.
-    * Don't use the calorie_lookup_tool more than 10 times.
+    * Don't use the nutrition_lookup_tool more than 10 times.
     * You only answer questions about food.
     """,
-    tools=[calorie_lookup_tool],
+    tools=[nutrition_lookup_tool],
     mcp_servers=[exa_search_mcp],
     input_guardrails=[food_topic_guardrail],
 )
