@@ -1,34 +1,11 @@
-import csv
-import re
-from pathlib import Path
-import chromadb
+"""Compatibility shim for the recipe loader.
 
-chroma = chromadb.PersistentClient(path="../chroma")
+Historically this script loaded calorie data. It now delegates to
+`recipe_loader.main` so existing documentation still works.
+"""
 
-# create or reuse collection
-collection = chroma.get_or_create_collection("nutrition_db")
+from recipe_loader import main
 
-with open("../data/calories.csv", newline="", encoding="utf-8-sig") as f:
-    reader = csv.DictReader(f)
 
-    docs = []
-    metas = []
-    ids = []
-
-    for i, row in enumerate(reader):
-        food = row["FoodItem"]
-        category = row["FoodCategory"]
-
-        calories = int(re.search(r"\d+", row["Cals_per100grams"]).group())
-
-        docs.append(f"{food} has {calories} calories per 100g")
-        metas.append({
-            "food_item": food.lower(),
-            "food_category": category.lower(),
-            "calories_per_100g": calories
-        })
-        ids.append(f"food_{i}")
-
-collection.add(documents=docs, metadatas=metas, ids=ids)
-
-print("Loaded", len(ids), "foods into nutrition_db")
+if __name__ == "__main__":
+    main()
