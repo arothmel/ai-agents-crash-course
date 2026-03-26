@@ -53,6 +53,8 @@ A complete **AI-powered nutrition assistant** featuring:
 - Build production-grade chatbot
 - Deploy to cloud platforms
 
+<img width="1548" height="538" alt="image" src="https://github.com/user-attachments/assets/2be7646f-9c1b-47eb-90e6-92b252a4189e" />
+
 ## 🔑 What You'll Learn
 
 ✅ Build **autonomous AI agents** using OpenAI's latest SDK  
