@@ -1,12 +1,144 @@
 import os
+from dataclasses import dataclass
+from enum import Enum
 
 import chainlit as cl
 import dotenv
+import openai
+
+dotenv.load_dotenv()
+
 from agents import InputGuardrailTripwireTriggered, Runner, SQLiteSession
+from conversation_state import apply_command, ensure_state, parse_command
+from effective_recipe import build_effective_recipe
+from recipe_catalog import get_recipe
 from nutrition_agent import exa_search_mcp, nutrition_agent
 from openai.types.responses import ResponseTextDeltaEvent
 
-dotenv.load_dotenv()
+
+WORKING_STATE_KEY = "working_state"
+
+
+class InteractionMode(Enum):
+    LOOKUP = "lookup"
+    INTERPRET = "interpret"
+
+
+@dataclass
+class ParsedInteraction:
+    mode: InteractionMode
+
+
+def _normalize_ingredient(text: str) -> str:
+    return text.strip().lower()
+
+
+def _parse_interaction(text: str) -> ParsedInteraction:
+    lowered = text.strip().lower()
+    if not lowered:
+        return ParsedInteraction(mode=InteractionMode.LOOKUP)
+
+    if "ingredient" in lowered and ("what" in lowered or "current" in lowered):
+        return ParsedInteraction(mode=InteractionMode.INTERPRET)
+
+    return ParsedInteraction(mode=InteractionMode.LOOKUP)
+
+
+def _extract_command_and_message(text: str) -> tuple[dict | None, str]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None, ""
+    first_line = lines[0]
+    command = parse_command(first_line)
+    if not command:
+        return None, text
+    remaining = "\n".join(lines[1:]).strip()
+    return command, remaining
+
+
+def _get_working_state() -> dict:
+    state = cl.user_session.get(WORKING_STATE_KEY)
+    state = ensure_state(state)
+    cl.user_session.set(WORKING_STATE_KEY, state)
+    return state
+
+
+def _format_working_ingredients(state: dict) -> str:
+    items = state.get("working_ingredients", [])
+    if not items:
+        return "(no ingredients yet)"
+    return ", ".join(item.title() for item in items)
+
+
+def _summarize_effective_recipe(state: dict) -> tuple[str, dict] | tuple[str, None]:
+    base = get_recipe(state.get("working_recipe_id"))
+    effective = build_effective_recipe(
+        base,
+        state.get("ingredient_overrides"),
+        state.get("servings_override"),
+    )
+    servings = effective.get("servings")
+    ingredient_lines = []
+    for ing in effective.get("ingredients", []):
+        name = ing.get("name", "Unknown").title()
+        qty = ing.get("quantity") or ing.get("amount")
+        unit = ing.get("unit")
+        if qty is not None:
+            if unit:
+                ingredient_lines.append(f"{name} ({qty} {unit})")
+            else:
+                ingredient_lines.append(f"{name} ({qty})")
+        else:
+            ingredient_lines.append(name)
+    summary = (
+        f"Working recipe: {effective.get('title', 'N/A')} (servings: {servings}). "
+        f"Use exactly these ingredient quantities: {', '.join(ingredient_lines)}. "
+        "If asked about nutrition, rely on these amounts (do not ask the user). "
+    )
+    return summary, effective
+
+
+def _format_nutrition_summary(result: dict) -> str:
+    effective = result["effective_recipe"]
+    nutrition = result["nutrition"]
+    status = result.get("status")
+    lines: list[str] = []
+    if status:
+        lines.append(status)
+    lines.append(
+        f"Recipe: {effective.get('title', 'Working Recipe')} (servings: {nutrition['servings']})"
+    )
+    ingredients = ", ".join(ing["name"].title() for ing in effective.get("ingredients", []))
+    lines.append(f"Ingredients: {ingredients or '(none)'}")
+
+    labels = {
+        "kcal": "Calories",
+        "protein_g": "Protein (g)",
+        "carbs_g": "Carbs (g)",
+        "fat_g": "Fat (g)",
+        "fiber_g": "Fiber (g)",
+    }
+
+    totals = nutrition["totals"]
+    per_serving = nutrition["per_serving"]
+    total_line = ", ".join(f"{labels[key]}: {totals[key]:.1f}" for key in labels)
+    per_serving_line = ", ".join(f"{labels[key]}: {per_serving[key]:.1f}" for key in labels)
+    lines.append(f"Batch totals -> {total_line}")
+    lines.append(f"Per serving -> {per_serving_line}")
+
+    missing = nutrition.get("missing") or []
+    if missing:
+        lines.append(
+            "Missing nutrition data for: " + ", ".join(name.title() for name in missing)
+        )
+
+    return "\n".join(lines)
+
+
+def _augment_message(original_message: str, state: dict) -> str:
+    summary, _ = _summarize_effective_recipe(state)
+    context = summary
+    return context + original_message
 
 
 @cl.on_chat_start
@@ -14,7 +146,9 @@ async def on_chat_start():
     session = SQLiteSession("conversation_history")
     cl.user_session.set("agent_session", session)
     # This is the only change in this file compared to the chatbot/agentic_chatbot.py file
-    await exa_search_mcp.connect()
+    if exa_search_mcp:
+        await exa_search_mcp.connect()
+    ensure_state(cl.user_session.get(WORKING_STATE_KEY))
 
 
 def croissant_upsell(text: str) -> str:
@@ -42,36 +176,71 @@ async def on_message(message: cl.Message):
     msg = cl.Message(content="")
 
     try:
-        result = Runner.run_streamed(
-            nutrition_agent,
-            message.content,
-            session=session,
-        )
+        state = _get_working_state()
 
-        async for event in result.stream_events():
-            # Stream final message text to screen
-            if event.type == "raw_response_event" and isinstance(
-                event.data, ResponseTextDeltaEvent
-            ):
-                await msg.stream_token(token=event.data.delta)
-                print(event.data.delta, end="", flush=True)
+        command, remaining_message = _extract_command_and_message(message.content)
+        if command:
+            result = apply_command(state, command)
+            cl.user_session.set(WORKING_STATE_KEY, state)
+            msg.content = _format_nutrition_summary(result)
+            await msg.update()
+            if not remaining_message:
+                return
+            state = _get_working_state()
+            message_to_run = remaining_message
+        else:
+            message_to_run = message.content
 
-            elif (
-                event.type == "raw_response_event"
-                and hasattr(event.data, "item")
-                and hasattr(event.data.item, "type")
-                and event.data.item.type == "function_call"
-                and len(event.data.item.arguments) > 0
-            ):
-                async with cl.Step(name=event.data.item.name, type="tool") as step:
-                    step.input = event.data.item.arguments
-                    print(
-                        f"\nTool call: {event.data.item.name} "
-                        f"with args: {event.data.item.arguments}"
-                    )
+        parsed = _parse_interaction(message_to_run)
 
-        msg.content = croissant_upsell(msg.content)
-        await msg.update()
+        if parsed.mode == InteractionMode.INTERPRET:
+            msg.content = f"Current working ingredients: {_format_working_ingredients(state)}"
+            await msg.update()
+            return
+
+        transformed_message = _augment_message(message_to_run, state)
+
+        try:
+            result = Runner.run_streamed(
+                nutrition_agent,
+                transformed_message,
+                session=session,
+            )
+
+            async for event in result.stream_events():
+                # Stream final message text to screen
+                if event.type == "raw_response_event" and isinstance(
+                    event.data, ResponseTextDeltaEvent
+                ):
+                    await msg.stream_token(token=event.data.delta)
+                    print(event.data.delta, end="", flush=True)
+
+                elif (
+                    event.type == "raw_response_event"
+                    and hasattr(event.data, "item")
+                    and hasattr(event.data.item, "type")
+                    and event.data.item.type == "function_call"
+                    and len(event.data.item.arguments) > 0
+                ):
+                    async with cl.Step(name=event.data.item.name, type="tool") as step:
+                        step.input = event.data.item.arguments
+                        print(
+                            f"\nTool call: {event.data.item.name} "
+                            f"with args: {event.data.item.arguments}"
+                        )
+
+            msg.content = croissant_upsell(msg.content)
+            await msg.update()
+
+        except openai.APIError as exc:  # Graceful failure with request id
+            request_id = getattr(exc, "request_id", None)
+            error_message = getattr(exc, "message", str(exc))
+            msg.content = (
+                "OpenAI streaming error. Please retry. "
+                f"Request ID: {request_id or 'unknown'}. Error: {error_message}"
+            )
+            print(msg.content)
+            await msg.update()
 
     except InputGuardrailTripwireTriggered:
         msg.content = "Sorry, I can only answer food-related questions."

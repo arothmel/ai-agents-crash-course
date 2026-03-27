@@ -24,17 +24,7 @@ from nutrition_lookup import NutritionLookup
 nutrition_lookup = NutritionLookup()
 
 
-@function_tool
-def nutrition_lookup_tool(query: str) -> str:
-    """
-    Tool function for looking up nutrition facts for single ingredients.
-
-    Args:
-        query: The food item to look up.
-
-    Returns:
-        JSON-formatted nutrition information.
-    """
+def _run_nutrition_lookup(query: str) -> str:
     result = nutrition_lookup.lookup(query)
     if not result:
         return f"No nutrition information found for: {query}"
@@ -42,18 +32,25 @@ def nutrition_lookup_tool(query: str) -> str:
     return json.dumps(result.to_dict(), indent=2)
 
 
-# EXA Search MCP setup
-# Increased EXA timeout from 30 to 90 seconds since EXA can take longer than 30 seconds to respond when under heavy load
-exa_search_mcp = MCPServerStreamableHttp(
-    name="Exa Search MCP",
-    params={
-        "url": f"https://mcp.exa.ai/mcp?{os.environ.get('EXA_API_KEY')}",
-        "timeout": 90,
-    },
-    client_session_timeout_seconds=90,
-    cache_tools_list=True,
-    max_retry_attempts=1,
+nutrition_lookup_tool = function_tool(
+    _run_nutrition_lookup, name_override="nutrition_lookup_tool"
 )
+
+
+EXA_API_KEY = os.environ.get("EXA_API_KEY")
+exa_search_mcp = None
+if EXA_API_KEY:
+    # EXA Search MCP setup
+    exa_search_mcp = MCPServerStreamableHttp(
+        name="Exa Search MCP",
+        params={
+            "url": f"https://mcp.exa.ai/mcp?{EXA_API_KEY}",
+            "timeout": 90,
+        },
+        client_session_timeout_seconds=90,
+        cache_tools_list=True,
+        max_retry_attempts=1,
+    )
 
 # 1st Agent: Our "Calorie Agent"
 calorie_agent_with_search = Agent(
@@ -63,7 +60,7 @@ calorie_agent_with_search = Agent(
     * You give concise answers.
     * You follow this workflow:
         0) First, use the nutrition_lookup_tool to get the nutrition information (kcal, protein, carbs, fat, fiber) of the ingredients. Only use the result if it's explicitly for the food requested in the query.
-        1) If you couldn't find the exact match for the food or you need to look up the ingredients, search the EXA web to figure out the exact ingredients of the meal.
+        1) If you couldn't find the exact match for the food or you need to look up the ingredients, optionally search the EXA web (when available) to figure out the exact ingredients of the meal.
         Even if you have the calories in the web search response, you should still use the nutrition_lookup_tool to get the nutrition
         information of the ingredients to make sure the information you provide is consistent.
         2) Then, if necessary, use the nutrition_lookup_tool to get the nutrition information of the ingredients.
@@ -73,7 +70,7 @@ calorie_agent_with_search = Agent(
     * Don't use the nutrition_lookup_tool more than 10 times.
     """,
     tools=[nutrition_lookup_tool],
-    mcp_servers=[exa_search_mcp],
+    mcp_servers=[exa_search_mcp] if exa_search_mcp else [],
 )
 
 # 2nd Agent: Our Healthy Breakfast Plan Advisor
@@ -98,16 +95,18 @@ breakfast_planner_tool = healthy_breakfast_planner_agent.as_tool(
     tool_description="Use this tool to plan a a number of healthy breakfast options",
 )
 
-# 3rd Agent: Breakfast Price Checker
-breakfast_price_checker_agent = Agent(
-    name="Breakfast Price Checker Assistant",
+# 3rd Agent: Seasonal & Local Sourcing Advisor
+in_season_agent = Agent(
+    name="Seasonality & Local Sourcing Advisor",
     instructions="""
-    * You are a helpful assistant that takes multiple breakfast items (with ingredients and calories) and checks for the price of the ingredients.
-    * Use the exa search to get an approximate price for the ingredients.
-    * In your final output prove the meal name, ingredients with calories and price for each meal.
-    * Use markdown and be as concise as possible.
+    * You help determine whether each meal's primary ingredients are in season or can be locally sourced.
+    * Use Exa Search to confirm seasonal windows or sourcing notes when it is available; otherwise rely on general culinary knowledge.
+    * For each meal you receive, output a short bullet list describing:
+        - Which key ingredients are in season right now (or when they will be).
+        - Any locally sourced substitutions or farmer's market tips.
+    * Keep the response concise and actionable, no prices needed.
     """,
-    mcp_servers=[exa_search_mcp],
+    mcp_servers=[exa_search_mcp] if exa_search_mcp else [],
 )
 
 # 4th Agent: Main Breakfast Advisor that glues everything together
@@ -122,14 +121,14 @@ breakfast_advisor = Agent(
     Follow this workflow carefully:
     1) Use the breakfast_planner_tool to plan a a number of healthy breakfast options.
     2) Use the calorie_calculator_tool to calculate the calories for the meal and its ingredients.
-    3) Handoff the breakfast meals and the calories to the Use the Breakfast Price Checker Assistant to add the prices in the last step.
+    3) Handoff the breakfast meals to the Seasonality & Local Sourcing Advisor so they can add in-season and local sourcing guidance.
 
     """,
     tools=[breakfast_planner_tool, calorie_calculator_tool],
     handoff_description="""
     Create a concise breakfast recommendation based on the user's preferences. Use Markdown format.
     """,
-    handoffs=[breakfast_price_checker_agent],
+    handoffs=[in_season_agent],
 )
 
 
@@ -165,7 +164,7 @@ calorie_agent_with_search_guarded = Agent(
     * You give concise answers.
     * You follow this workflow:
         0) First, use the nutrition_lookup_tool to get the nutrition information of the ingredients. But only use the result if it's explicitly for the food requested in the query.
-        1) If you couldn't find the exact match for the food or you need to look up the ingredients, search the EXA web to figure out the exact ingredients of the meal.
+        1) If you couldn't find the exact match for the food or you need to look up the ingredients, optionally search the EXA web (when available) to figure out the exact ingredients of the meal.
         Even if you have the calories in the web search response, you should still use the nutrition_lookup_tool to get the nutrition
         information of the ingredients to make sure the information you provide is consistent.
         2) Then, if necessary, use the nutrition_lookup_tool to get the nutrition information of the ingredients.
@@ -176,7 +175,7 @@ calorie_agent_with_search_guarded = Agent(
     * You only answer questions about food.
     """,
     tools=[nutrition_lookup_tool],
-    mcp_servers=[exa_search_mcp],
+    mcp_servers=[exa_search_mcp] if exa_search_mcp else [],
     input_guardrails=[food_topic_guardrail],
 )
 
@@ -192,14 +191,14 @@ breakfast_advisor_guarded = Agent(
     Follow this workflow carefully:
     1) Use the breakfast_planner_tool to plan a a number of healthy breakfast options.
     2) Use the calorie_calculator_tool to calculate the calories for the meal and its ingredients.
-    3) Always handoff the breakfast meals and the calories to the Use the Breakfast Price Checker Assistant to add the prices in the last step.
+    3) Always handoff the breakfast meals to the Seasonality & Local Sourcing Advisor so they can add seasonal and local sourcing guidance in the last step.
 
     """,
     tools=[breakfast_planner_tool, calorie_calculator_tool],
     handoff_description="""
     Create a concise breakfast recommendation based on the user's preferences. Use Markdown format.
     """,
-    handoffs=[breakfast_price_checker_agent],
+    handoffs=[in_season_agent],
     input_guardrails=[food_topic_guardrail],
 )
 

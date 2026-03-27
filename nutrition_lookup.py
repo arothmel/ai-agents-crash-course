@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_PATH = REPO_ROOT / "data" / "eurofir_mediterranean.csv"
@@ -99,9 +99,11 @@ class NutritionLookup:
         if per_100g["fiber_g"] >= FIBER_THRESHOLD:
             signals.append("fiber_source")
 
+        ingredient_name = (best_row.get("FoodName", "").strip() or query).lower()
+
         return NutritionResult(
             query=query,
-            ingredient=best_row.get("FoodName", "").strip() or query,
+            ingredient=ingredient_name,
             per_100g=per_100g,
             signals=signals,
         )
