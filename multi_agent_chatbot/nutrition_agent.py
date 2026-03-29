@@ -19,17 +19,32 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from nutrition_lookup import NutritionLookup
+from nutrition_lookup import IngredientNutritionResult, NutritionLookup
+from multi_agent_chatbot.nutrition_calculator import (
+    NutritionCalculator,
+    RecipeNutritionResult,
+)
 
 nutrition_lookup = NutritionLookup()
+nutrition_calculator = NutritionCalculator()
 
 
 def _run_nutrition_lookup(query: str) -> str:
     result = nutrition_lookup.lookup(query)
     if not result:
-        return f"No nutrition information found for: {query}"
+        return json.dumps(
+            {
+                "query": query,
+                "ingredient": None,
+                "per_100g": {},
+                "signals": [],
+                "source": "eurofir_mediterranean",
+                "error": f"No nutrition information found for: {query}",
+            },
+            indent=2,
+        )
 
-    return json.dumps(result.to_dict(), indent=2)
+    return json.dumps(result, indent=2)
 
 
 nutrition_lookup_tool = function_tool(

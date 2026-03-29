@@ -15,6 +15,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = REPO_ROOT / "recipes" / "recipes.csv"
 DEFAULT_OUTPUT = REPO_ROOT / "rag_setup" / "recipes_normalized.jsonl"
 REQUIRED_HEADERS = ["Recipe", "Content", "Dish", "Stages", "food_pics"]
+HEADER_ALIASES = {
+    "recipe": "Recipe",
+    "title": "Recipe",
+    "column_0": "Recipe",
+    "content": "Content",
+    "body": "Content",
+    "column_1": "Content",
+    "dish": "Dish",
+    "stage": "Stages",
+    "stages": "Stages",
+    "foodpics": "food_pics",
+    "food_pics": "food_pics",
+    "food pics": "food_pics",
+}
 NORMALIZED_HEADERS = {
     "Recipe": "title",
     "Content": "body",
@@ -22,7 +36,7 @@ NORMALIZED_HEADERS = {
     "Stages": "stage",
     "food_pics": "food_pics",
 }
-CLASSIFICATIONS = ["recipe_full", "recipe_partial", "note", "herb_tip", "other"]
+CLASSIFICATIONS = ["recipe_full", "recipe_partial", "note", "herb_tip", "post", "other"]
 SERVINGS_PATTERNS = [
     ("serves", r"serves\s+(?P<count>\d+(?:\.\d+)?)"),
     ("yield", r"yield\s+(?P<count>\d+(?:\.\d+)?)"),
@@ -42,12 +56,52 @@ HERB_WORDS = [
     "tarragon",
 ]
 AROMATIC_WORDS = ["garlic", "ginger", "scallion", "scallions", "green onion", "shallot"]
+SECTION_HEADER_TOKENS = [
+    "ingredients",
+    "ingredient",
+    "instructions",
+    "directions",
+    "preparation",
+    "prep",
+    "method",
+    "steps",
+    "notes",
+    "note",
+    "tips",
+    "tip",
+]
+SECTION_HEADER_MAX_TOKENS = 40
+SECTION_HEADER_MAX_PREFIX_WORDS = 5
+ALLOWED_RECIPE_STAGES = {"Make ahead", "Prepare the meal"}
+
+
+def normalize_headers(headers: Iterable[str] | None) -> list[str]:
+    if headers is None:
+        raise ValueError("CSV file has no headers")
+
+    normalized: list[str] = []
+    seen: dict[str, int] = {}
+    for index, raw_header in enumerate(headers):
+        cleaned = clean_header(raw_header)
+        if not cleaned:
+            cleaned = f"column_{index}"
+        alias_key = cleaned.lower()
+        canonical = HEADER_ALIASES.get(alias_key, cleaned)
+        if canonical in seen:
+            seen[canonical] += 1
+            canonical = f"{canonical}_{seen[canonical]}"
+        else:
+            seen[canonical] = 0
+        normalized.append(canonical)
+    return normalized
 
 
 def read_rows(csv_path: Path) -> Iterable[dict[str, str]]:
     with csv_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        validate_headers(reader.fieldnames)
+        normalized_headers = normalize_headers(reader.fieldnames)
+        validate_headers(normalized_headers)
+        reader.fieldnames = normalized_headers
         for row in reader:
             yield row
 
@@ -82,7 +136,27 @@ def normalize_row(raw: dict[str, Any]) -> dict[str, Any]:
     normalized["aromatic_mentions"] = extract_mentions(
         normalized.get("body", ""), AROMATIC_WORDS
     )
-    normalized["ingredient_lines_raw"] = extract_ingredient_lines(normalized.get("body", ""))
+    ingredient_lines_raw, ingredient_flags = extract_ingredient_section_lines(normalized.get("body", ""))
+    ingestion_flags = list(ingredient_flags)
+    normalized["ingredient_lines_raw"] = ingredient_lines_raw
+    missing_section = "missing_ingredients_section" in ingestion_flags
+    if missing_section:
+        normalized["ingredient_lines_source"] = "none"
+        normalized["ingredient_lines_status"] = "missing_review_required"
+    else:
+        normalized["ingredient_lines_source"] = "section_lines"
+        normalized["ingredient_lines_status"] = "present"
+
+    if not ingredient_lines_raw and not missing_section:
+        normalized["ingredient_lines_source"] = "none"
+        normalized["ingredient_lines_status"] = "missing_review_required"
+        ingestion_flags.append("missing_ingredients_section")
+    stage_value = normalized.get("stage", "")
+    stage_is_valid = stage_value in ALLOWED_RECIPE_STAGES
+    normalized["stage_is_valid"] = stage_is_valid
+    if not stage_is_valid and "invalid_recipe_stage" not in ingestion_flags:
+        ingestion_flags.append("invalid_recipe_stage")
+    normalized["ingestion_flags"] = ingestion_flags
     enriched = apply_serving_rules(normalized)
     warnings = list(validate_row(normalized))
     if warnings:
@@ -107,7 +181,7 @@ def classify_row(row: dict[str, Any]) -> str:
         return "other"
 
     if stage == "still growing":
-        return "other"
+        return "post"
 
     herb_keywords = ["herb", "rosemary", "lavender", "cilantro", "parsley", "thyme", "sage"]
     herb_context = ["watering", "water", "soil", "pot", "planter", "grow", "garden", "care"]
@@ -214,43 +288,72 @@ def extract_mentions(body: str, keywords: list[str]) -> list[str]:
     return found
 
 
-def extract_ingredient_lines(body: str) -> list[str]:
-    lines = []
-    for raw_line in body.splitlines():
-        line = raw_line.strip()
-        if not line:
+def extract_ingredient_section_lines(content: str) -> tuple[list[str], list[str]]:
+    """Return raw ingredient lines plus any ingestion flags."""
+
+    lines = content.splitlines()
+    ingredient_lines: list[str] = []
+    ingestion_flags: list[str] = []
+    collecting = False
+    found_section = False
+
+    for raw_line in lines:
+        clean_line = raw_line.replace("\xa0", " ").replace("\\xa0", " ")
+        header = detect_section_header(clean_line)
+        if not collecting:
+            if header in {"ingredient", "ingredients"}:
+                collecting = True
+                found_section = True
             continue
-        lower = line.lower()
-        if lower.startswith("ingredients"):
+
+        if header and header not in {"ingredient", "ingredients"}:
+            break
+        if header in {"ingredient", "ingredients"}:
+            # nested Ingredients header; keep collecting but skip the header line
             continue
-        qty_tokens = [
-            "tbsp",
-            "tsp",
-            "cup",
-            "cups",
-            "g",
-            "gram",
-            "grams",
-            "ml",
-            "ounce",
-            "ounces",
-            "oz",
-            "teaspoon",
-            "tablespoon",
-            "kg",
-            "lb",
-            "pound",
-            "serving",
-            "servings",
-        ]
-        has_quantity_token = any(token in lower for token in qty_tokens)
-        starts_like_list = lower.startswith(('- ', '•', '*'))
-        has_digit = any(ch.isdigit() for ch in lower)
-        if starts_like_list and (has_quantity_token or has_digit):
-            lines.append(line)
-        elif has_quantity_token and has_digit:
-            lines.append(line)
-    return lines
+        if not clean_line.strip():
+            continue
+        ingredient_lines.append(raw_line.rstrip("\r"))
+
+    if not found_section:
+        ingestion_flags.append("missing_ingredients_section")
+
+    return ingredient_lines, ingestion_flags
+
+
+def detect_section_header(line: str) -> str | None:
+    normalized = normalize_header_for_matching(line)
+    if not normalized:
+        return None
+    tokens = [part for part in re.split(r"\W+", normalized) if part]
+    if not tokens:
+        return None
+    if len(tokens) > SECTION_HEADER_MAX_TOKENS:
+        return None
+    for token in SECTION_HEADER_TOKENS:
+        for index, word in enumerate(tokens):
+            if word == token and index <= SECTION_HEADER_MAX_PREFIX_WORDS:
+                return token
+    return None
+
+
+def normalize_header_for_matching(line: str) -> str:
+    if not line:
+        return ""
+    text = line.strip()
+    if not text:
+        return ""
+    # Remove markdown heading markers, bullets, and checklist prefixes.
+    text = re.sub(r"^[#>*+\-\s`]+", "", text)
+    text = re.sub(r"^(?:\[[xX ]\])\s*", "", text)
+    # Trim trailing punctuation commonly used around headings.
+    text = text.strip().replace(' ', ' ')
+    text = text.strip('*`_~')
+    text = text.strip()
+    text = re.sub(r'^\W+', '', text)
+    text = re.sub(r'\W+$', '', text)
+    text = re.sub(r"\s+", " ", text)
+    return text.lower()
 
 
 def write_output(rows: Iterable[dict[str, Any]], output_path: Path) -> None:

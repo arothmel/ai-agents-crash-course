@@ -8,4 +8,4 @@ if str(REPO_ROOT) not in sys.path:
 from nutrition_lookup import NutritionLookup
 
 lookup = NutritionLookup()
-print(json.dumps(lookup.lookup('chickpeas').to_dict(), indent=2))
+print(json.dumps(lookup.lookup('chickpeas'), indent=2))

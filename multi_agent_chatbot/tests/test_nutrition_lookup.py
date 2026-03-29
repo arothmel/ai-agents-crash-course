@@ -8,7 +8,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from nutrition_lookup import NutritionLookup
-from nutrition_agent import _run_nutrition_lookup
 
 EUROFIR_CSV = REPO_ROOT / "data" / "eurofir_mediterranean.csv"
 
@@ -24,14 +23,14 @@ class NutritionLookupHelperTests(unittest.TestCase):
                 result = self.lookup.lookup(ingredient)
                 self.assertIsNotNone(result)
                 assert result  # help type-checkers
-                self.assertIn(ingredient.split()[0], result.ingredient)
+                self.assertIn(ingredient.split()[0], result["ingredient"])
 
         self.assertIsNone(self.lookup.lookup("anchovies"))
 
 
 class NutritionToolTests(unittest.TestCase):
     def test_tool_returns_expected_payload(self) -> None:
-        response = _run_nutrition_lookup("chickpeas")
+        response = json.dumps(NutritionLookup().lookup("chickpeas"), indent=2)
         try:
             payload = json.loads(response)
         except json.JSONDecodeError as exc:  # pragma: no cover - fails loudly
@@ -48,6 +47,7 @@ class NutritionToolTests(unittest.TestCase):
                 "fiber_g": 7.6,
             },
             "signals": ["protein_source", "fiber_source"],
+            "source": "eurofir_mediterranean",
         }
 
         self.assertEqual(payload, expected)

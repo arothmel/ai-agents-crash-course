@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_PATH = REPO_ROOT / "data" / "eurofir_mediterranean.csv"
@@ -32,20 +31,12 @@ def _match_score(query: str, candidate: str) -> int:
     return 0
 
 
-@dataclass
-class NutritionResult:
+class IngredientNutritionResult(TypedDict):
     query: str
-    ingredient: str
+    ingredient: str | None
     per_100g: dict[str, float]
     signals: list[str]
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "query": self.query,
-            "ingredient": self.ingredient,
-            "per_100g": self.per_100g,
-            "signals": self.signals,
-        }
+    source: str
 
 
 class NutritionLookup:
@@ -63,7 +54,7 @@ class NutritionLookup:
     def reload(self) -> None:
         self._rows = self._read_rows()
 
-    def lookup(self, query: str) -> Optional[NutritionResult]:
+    def lookup(self, query: str) -> Optional[IngredientNutritionResult]:
         normalized_query = query.strip().lower()
         if not normalized_query:
             return None
@@ -101,12 +92,13 @@ class NutritionLookup:
 
         ingredient_name = (best_row.get("FoodName", "").strip() or query).lower()
 
-        return NutritionResult(
+        return IngredientNutritionResult(
             query=query,
             ingredient=ingredient_name,
             per_100g=per_100g,
             signals=signals,
+            source="eurofir_mediterranean",
         )
 
 
-__all__ = ["NutritionLookup", "NutritionResult"]
+__all__ = ["NutritionLookup", "IngredientNutritionResult"]

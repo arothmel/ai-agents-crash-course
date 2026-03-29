@@ -11,12 +11,20 @@ dotenv.load_dotenv()
 from agents import InputGuardrailTripwireTriggered, Runner, SQLiteSession
 from conversation_state import apply_command, ensure_state, parse_command
 from effective_recipe import build_effective_recipe
-from recipe_catalog import get_recipe
+from recipe_catalog import get_recipe, list_recipes
 from nutrition_agent import exa_search_mcp, nutrition_agent
 from openai.types.responses import ResponseTextDeltaEvent
 
 
 WORKING_STATE_KEY = "working_state"
+
+STARTER_ACTIONS = [
+    ("Show ingredients", "Show me the ingredients for this recipe."),
+    ("Estimate calories", "Estimate the calories for this recipe."),
+    ("Suggest substitutions", "Suggest ingredient substitutions."),
+    ("Herbs/spices excluded", "Which herbs or spices were excluded?"),
+    ("Unresolved ingredients", "Which ingredients are unresolved?"),
+]
 
 
 class InteractionMode(Enum):
@@ -68,6 +76,24 @@ def _format_working_ingredients(state: dict) -> str:
     if not items:
         return "(no ingredients yet)"
     return ", ".join(item.title() for item in items)
+
+
+async def _prompt_recipe_selection(session: SQLiteSession) -> None:
+    recipes = list_recipes()
+    if not recipes:
+        return
+    actions = [
+        cl.Action(
+            name="select_recipe",
+            label=recipe.get("title") or "Untitled",
+            payload={"id": recipe["id"]},
+        )
+        for recipe in recipes
+    ]
+    await cl.Message(
+        content="Choose a recipe to get started:",
+        actions=actions,
+    ).send()
 
 
 def _summarize_effective_recipe(state: dict) -> tuple[str, dict] | tuple[str, None]:
@@ -141,6 +167,95 @@ def _augment_message(original_message: str, state: dict) -> str:
     return context + original_message
 
 
+async def _handle_user_message(message_text: str, session: SQLiteSession) -> None:
+    msg = cl.Message(content="")
+    try:
+        state = _get_working_state()
+        command, remaining_message = _extract_command_and_message(message_text)
+        if command:
+            result = apply_command(state, command)
+            cl.user_session.set(WORKING_STATE_KEY, state)
+            msg.content = _format_nutrition_summary(result)
+            await msg.send()
+            if command.get("type") == "select_recipe":
+                await _send_conversation_starters()
+            if remaining_message:
+                await _handle_user_message(remaining_message, session)
+            return
+
+        parsed = _parse_interaction(message_text)
+
+        if parsed.mode == InteractionMode.INTERPRET:
+            msg.content = f"Current working ingredients: {_format_working_ingredients(state)}"
+            await msg.send()
+            return
+
+        transformed_message = _augment_message(message_text, state)
+
+        try:
+            result = Runner.run_streamed(
+                nutrition_agent,
+                transformed_message,
+                session=session,
+            )
+
+            async for event in result.stream_events():
+                if event.type == "raw_response_event" and isinstance(
+                    event.data, ResponseTextDeltaEvent
+                ):
+                    await msg.stream_token(token=event.data.delta)
+                    print(event.data.delta, end="", flush=True)
+
+                elif (
+                    event.type == "raw_response_event"
+                    and hasattr(event.data, "item")
+                    and hasattr(event.data.item, "type")
+                    and event.data.item.type == "function_call"
+                    and len(event.data.item.arguments) > 0
+                ):
+                    async with cl.Step(name=event.data.item.name, type="tool") as step:
+                        step.input = event.data.item.arguments
+                        print(
+                            f"\nTool call: {event.data.item.name} "
+                            f"with args: {event.data.item.arguments}"
+                        )
+
+            msg.content = croissant_upsell(msg.content)
+            await msg.send()
+
+        except openai.APIError as exc:  # Graceful failure with request id
+            request_id = getattr(exc, "request_id", None)
+            error_message = getattr(exc, "message", str(exc))
+            msg.content = (
+                "OpenAI streaming error. Please retry. "
+                f"Request ID: {request_id or 'unknown'}. Error: {error_message}"
+            )
+            await msg.send()
+
+        except InputGuardrailTripwireTriggered:
+            msg.content = (
+                "This question may not be about food. Please rephrase it with food-specific"
+                " context."
+            )
+            await msg.send()
+
+    except Exception as e:  # pragma: no cover - safety net
+        msg.content = f"Unexpected error: {e}"
+        await msg.send()
+        raise
+
+
+async def _send_conversation_starters() -> None:
+    actions = [
+        cl.Action(name="starter_action", label=label, payload={"prompt": prompt})
+        for label, prompt in STARTER_ACTIONS
+    ]
+    await cl.Message(
+        content="Conversation starters:",
+        actions=actions,
+    ).send()
+
+
 @cl.on_chat_start
 async def on_chat_start():
     session = SQLiteSession("conversation_history")
@@ -149,6 +264,12 @@ async def on_chat_start():
     if exa_search_mcp:
         await exa_search_mcp.connect()
     ensure_state(cl.user_session.get(WORKING_STATE_KEY))
+    tip = (
+        "ℹ️ To analyze a specific recipe, start your message with `Use recipe: Exact Recipe Title` "
+        "(for example, `Use recipe: Black Eyed Peas Recipe (Greek-Style)`)."
+    )
+    await cl.Message(content=tip).send()
+    await _prompt_recipe_selection(session)
 
 
 def croissant_upsell(text: str) -> str:
@@ -172,79 +293,55 @@ def croissant_upsell(text: str) -> str:
 @cl.on_message
 async def on_message(message: cl.Message):
     session = cl.user_session.get("agent_session")
+    if session is None:
+        session = SQLiteSession("conversation_history")
+        cl.user_session.set("agent_session", session)
+    await _handle_user_message(message.content, session)
 
-    msg = cl.Message(content="")
 
-    try:
-        state = _get_working_state()
+@cl.action_callback("starter_action")
+async def on_starter_action(action: cl.Action):
+    session = cl.user_session.get("agent_session")
+    if session is None:
+        session = SQLiteSession("conversation_history")
+        cl.user_session.set("agent_session", session)
+    prompt = None
+    if isinstance(action.payload, dict):
+        prompt = action.payload.get("prompt")
+    if not prompt:
+        prompt = action.value
+    if not prompt:
+        await cl.Message(content="No prompt available for this action.").send()
+        return
+    await _handle_user_message(prompt, session)
 
-        command, remaining_message = _extract_command_and_message(message.content)
-        if command:
-            result = apply_command(state, command)
-            cl.user_session.set(WORKING_STATE_KEY, state)
-            msg.content = _format_nutrition_summary(result)
-            await msg.update()
-            if not remaining_message:
-                return
-            state = _get_working_state()
-            message_to_run = remaining_message
-        else:
-            message_to_run = message.content
 
-        parsed = _parse_interaction(message_to_run)
-
-        if parsed.mode == InteractionMode.INTERPRET:
-            msg.content = f"Current working ingredients: {_format_working_ingredients(state)}"
-            await msg.update()
-            return
-
-        transformed_message = _augment_message(message_to_run, state)
-
-        try:
-            result = Runner.run_streamed(
-                nutrition_agent,
-                transformed_message,
-                session=session,
-            )
-
-            async for event in result.stream_events():
-                # Stream final message text to screen
-                if event.type == "raw_response_event" and isinstance(
-                    event.data, ResponseTextDeltaEvent
-                ):
-                    await msg.stream_token(token=event.data.delta)
-                    print(event.data.delta, end="", flush=True)
-
-                elif (
-                    event.type == "raw_response_event"
-                    and hasattr(event.data, "item")
-                    and hasattr(event.data.item, "type")
-                    and event.data.item.type == "function_call"
-                    and len(event.data.item.arguments) > 0
-                ):
-                    async with cl.Step(name=event.data.item.name, type="tool") as step:
-                        step.input = event.data.item.arguments
-                        print(
-                            f"\nTool call: {event.data.item.name} "
-                            f"with args: {event.data.item.arguments}"
-                        )
-
-            msg.content = croissant_upsell(msg.content)
-            await msg.update()
-
-        except openai.APIError as exc:  # Graceful failure with request id
-            request_id = getattr(exc, "request_id", None)
-            error_message = getattr(exc, "message", str(exc))
-            msg.content = (
-                "OpenAI streaming error. Please retry. "
-                f"Request ID: {request_id or 'unknown'}. Error: {error_message}"
-            )
-            print(msg.content)
-            await msg.update()
-
-    except InputGuardrailTripwireTriggered:
-        msg.content = "Sorry, I can only answer food-related questions."
-        await msg.update()
+@cl.action_callback("select_recipe")
+async def on_select_recipe(action: cl.Action):
+    session = cl.user_session.get("agent_session")
+    if session is None:
+        session = SQLiteSession("conversation_history")
+        cl.user_session.set("agent_session", session)
+    recipes = list_recipes()
+    selected_id = None
+    if isinstance(action.payload, dict):
+        selected_id = action.payload.get("id")
+    if not selected_id and action.value:
+        selected_id = action.value
+    selected = next((recipe for recipe in recipes if recipe["id"] == selected_id), None)
+    if not selected:
+        selected = next(
+            (
+                recipe
+                for recipe in recipes
+                if (recipe.get("title") or "").strip() == (action.value or "")
+            ),
+            None,
+        )
+    if not selected:
+        await cl.Message(content="Recipe not found in catalog.").send()
+        return
+    await _handle_user_message(f"Use recipe: {selected.get('title')}", session)
 
 @cl.password_auth_callback
 def auth_callback(username: str, password: str):

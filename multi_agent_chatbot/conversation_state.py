@@ -7,7 +7,8 @@ from typing import Any, Dict
 
 from effective_recipe import build_effective_recipe
 from nutrition_calculator import NutritionCalculator
-from recipe_catalog import DEFAULT_RECIPE_ID, get_recipe
+from recipe_catalog import DEFAULT_RECIPE_ID, get_recipe, resolve_recipe_id_by_title
+from retrieval import build_nutrition_input
 
 _NORMALIZE_PUNCT_RE = re.compile(r"[.!?]+$")
 ADD_RE = re.compile(r"^(?:please\s+)?add\s+(?P<name>.+)$", re.IGNORECASE)
@@ -21,6 +22,7 @@ SERVINGS_RE = re.compile(
     re.IGNORECASE,
 )
 RESET_RE = re.compile(r"^reset(?:\s+changes)?$", re.IGNORECASE)
+USE_RECIPE_RE = re.compile(r"^use\s+recipe:\s*(?P<title>.+)$", re.IGNORECASE)
 
 
 nutrition_calculator = NutritionCalculator()
@@ -41,6 +43,7 @@ def ensure_state(state: dict | None) -> dict:
     state.setdefault("ingredient_overrides", {})
     state.setdefault("servings_override", None)
     state.setdefault("working_ingredients", None)
+    state.setdefault("ingredient_lines_current", None)
     if not state["working_recipe_id"]:
         state["working_recipe_id"] = DEFAULT_RECIPE_ID
     if not state["working_ingredients"]:
@@ -49,9 +52,45 @@ def ensure_state(state: dict | None) -> dict:
     return state
 
 
+def _stringify_quantity(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if number.is_integer():
+        return str(int(number))
+    return str(number).rstrip("0").rstrip(".")
+
+
+def _format_ingredient_line(ingredient: dict[str, Any]) -> str:
+    name = (ingredient.get("name") or "").strip()
+    qty = _stringify_quantity(ingredient.get("quantity") or ingredient.get("amount"))
+    unit = (ingredient.get("unit") or "").strip()
+    parts = [part for part in [qty, unit, name] if part]
+    line = " ".join(parts)
+    return line if line else name
+
+
+def _lines_from_ingredients(ingredients: list[dict[str, Any]]) -> list[str]:
+    lines: list[str] = []
+    for ingredient in ingredients:
+        if not ingredient.get("name"):
+            continue
+        lines.append(_format_ingredient_line(ingredient))
+    return lines
+
+
 def parse_command(message: str) -> dict | None:
     text = _strip_trailing(message)
     if not text:
+        return None
+    match = USE_RECIPE_RE.match(text)
+    if match:
+        title = match.group("title").strip()
+        if title:
+            return {"type": "select_recipe", "title": title}
         return None
     if RESET_RE.match(text):
         return {"type": "reset"}
@@ -103,6 +142,7 @@ def apply_command(state: dict, command: dict) -> dict:
     if action_type == "reset":
         state["ingredient_overrides"] = {}
         state["servings_override"] = None
+        state["ingredient_lines_current"] = None
         base = get_recipe(state["working_recipe_id"])
         state["working_ingredients"] = [ing["name"] for ing in base.get("ingredients", [])]
         status = "All overrides cleared."
@@ -145,6 +185,17 @@ def apply_command(state: dict, command: dict) -> dict:
     elif action_type == "servings":
         state["servings_override"] = command.get("servings")
         status = f"Serving override set to {command.get('servings')}"
+    elif action_type == "select_recipe":
+        title = (command.get("title") or "").strip()
+        recipe_id = resolve_recipe_id_by_title(title)
+        if recipe_id:
+            state["working_recipe_id"] = recipe_id
+            state["ingredient_overrides"] = {}
+            state["servings_override"] = None
+            state["ingredient_lines_current"] = None
+            status = f"Switched to recipe: {title}"
+        else:
+            status = f"Recipe not found: {title}" if title else "Recipe title missing."
     else:
         status = "No override applied."
 
@@ -154,12 +205,29 @@ def apply_command(state: dict, command: dict) -> dict:
     )
     state["working_ingredients"] = [ing["name"] for ing in effective.get("ingredients", [])]
 
+    derived_lines = _lines_from_ingredients(effective.get("ingredients", []))
+    base_lines = list(base_recipe.get("ingredient_lines_raw") or [])
+    has_overrides = bool(state.get("ingredient_overrides"))
+    has_servings_override = state.get("servings_override") is not None
+    if derived_lines and (has_overrides or has_servings_override or not base_lines):
+        state["ingredient_lines_current"] = derived_lines
+    else:
+        state["ingredient_lines_current"] = None
+
+    recipe_for_lines = dict(base_recipe)
+    current_lines = state.get("ingredient_lines_current")
+    if current_lines:
+        recipe_for_lines["ingredient_lines_current"] = current_lines
+    nutrition_input = build_nutrition_input(
+        base_recipe.get("id"), recipe_for_lines, mode="current"
+    )
     nutrition = nutrition_calculator.calculate(effective)
 
     return {
         "status": status,
         "effective_recipe": effective,
         "nutrition": nutrition,
+        "nutrition_input": nutrition_input,
     }
 
 

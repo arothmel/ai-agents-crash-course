@@ -69,6 +69,18 @@ class NutritionCalculatorTests(unittest.TestCase):
         self.assertEqual(results["servings"], 2)
         self.assertAlmostEqual(results["per_serving"]["kcal"], 42.875, places=3)
 
+    def test_normalization_allows_lookup(self) -> None:
+        recipe = {
+            "title": "Test",
+            "servings": 1,
+            "ingredients": [
+                {"name": "large yellow onion, chopped", "quantity": 100},
+            ],
+        }
+        results = self.calculator.calculate(recipe)
+        self.assertEqual(results["missing"], [])
+        self.assertAlmostEqual(results["totals"]["kcal"], 40.0, places=1)
+
 
 if __name__ == "__main__":
     unittest.main()
